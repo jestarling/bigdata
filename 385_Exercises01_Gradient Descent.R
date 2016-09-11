@@ -36,8 +36,8 @@ m <- rep(1,nrow(X))
 	#   function for binomial logistic regression.
 logl <- function(X,Y,beta,m){
 	w <- 1 / (1 + exp(-X %*% beta))	#Calculate probabilities vector w_i.
-	logl <- - sum(Y*log(w+.01) + (m-Y)*log(1-w+.01)) #Calculate log-likelihood.
-		#Adding .01 to resolve issues with probabilities near 0 or 1.	
+	logl <- - sum(Y*log(w+1E-4) + (m-Y)*log(1-w+1E-4)) #Calculate log-likelihood.
+		#Adding constant to resolve issues with probabilities near 0 or 1.	
 	return(logl)	
 }
 
@@ -76,7 +76,7 @@ gradient <- function(X,Y,beta,m){
 #	converged: 1/0, depending on whether algorithm converged.
 #	loglik: Log-likelihood function.
 
-gradient_descent <- function(X,Y,m,maxiter=50000,conv=1*10^-3,a=.01){
+gradient_descent <- function(X,Y,m,maxiter=50000,conv=1E-10,a=.01){
 	
 	#1. Initialize values.
 	loglik <- rep(0,maxiter) 	#Initialize vector to hold loglikelihood function.
@@ -88,10 +88,17 @@ gradient_descent <- function(X,Y,m,maxiter=50000,conv=1*10^-3,a=.01){
 	betas <- matrix(0,nrow=maxiter+1,ncol=ncol(X)) 	
 
 	converged <- 0		#Indicator for whether convergence met.
+	
+	#Initialize values for first iteration.
 	betas[1,] <- rep(0,ncol(X))	#Initialize beta vector to 0 to start.
+	loglik[1] <- logl(X,Y,betas[1,],m)
+	grad[1,] <- gradient(X,Y,betas[1,],m)
 
 	#2. Perform gradient descent.
-	for (i in 1:maxiter){
+	for (i in 2:maxiter){
+		
+		#Set new beta equal to beta - a*gradient(beta).
+		betas[i,] <- betas[i-1,] - a * grad[i-1,]
 	
 		#Calculate loglikelihood for each iteration.
 		loglik[i] <- logl(X,Y,betas[i,],m)
@@ -99,20 +106,15 @@ gradient_descent <- function(X,Y,m,maxiter=50000,conv=1*10^-3,a=.01){
 		#Calculate gradient for beta.
 		grad[i,] <- gradient(X,Y,betas[i,],m)
 	
-		#Set new beta equal to beta - a*gradient(beta).
-		betas[i+1,] <- betas[i,] - a * grad[i,]
-	
-		iter <- i + 1	#Track iterations.
-	
 		#Check if convergence met: If yes, exit loop.
-		if (norm_vec(grad[i,]) < conv){
+		if (abs(loglik[i]-loglik[i-1])/abs(loglik[i-1]+1E-3) < conv){
 			converged=1;
 			break;
 		}
 	
 	} #End gradient descent iterations.
 		
-	return(list(beta_hat=betas[i,], iter=iter, converged=converged, loglik=loglik[1:i]))
+	return(list(beta_hat=betas[i,], iter=i, converged=converged, loglik=loglik[1:i]))
 }
 
 #------------------------------------------------------------------
@@ -123,7 +125,7 @@ glm1 = glm(y~X-1, family='binomial') #Fits model, obtains beta values.
 beta <- glm1$coefficients
 
 #2. Call gradient descent function to estimate.
-beta_hat <- gradient_descent(X,Y,m,maxiter=100000,conv=1*10^-3,a=.01)
+beta_hat <- gradient_descent(X,Y,m,maxiter=100000,conv=1E-10,a=.01)
 
 #3. Eyeball values for accuracy & display convergence.
 beta				#Glm estimated beta values.
