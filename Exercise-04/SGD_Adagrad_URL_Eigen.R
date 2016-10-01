@@ -51,23 +51,6 @@ Y_URL <- readRDS(file='/Users/jennstarling/UTAustin/2016_Fall_SDS 385_Big_Data/E
 m_URL <- rep(1,ncol(Xt_URL))
 
 #------------------------------------------------------------------
-#Set up training and test data.
-
-#Split URL data set into 75% train, 25% test.
-train_samps = sample(ncol(Xt_URL)*.75,replace=F)
-
-Xt_URL_tr = Xt_URL[,train_samps]
-Xt_URL_te = Xt_URL[,-train_samps]
-
-Y_URL_tr = Y_URL[train_samps]
-Y_URL_te = Y_URL[-train_samps]
-
-m_URL_tr = m_URL[train_samps]
-m_URL_te = m_URL[-train_samps]
-
-X_URL_te = t(Xt_URL_te)	#Need un-transposed test X for multiplying by beta when predicting.
-
-#------------------------------------------------------------------
 #Run eigen code on small data set, with and without a penalty.
 
 #Lambda=0 (no penalty)
@@ -94,15 +77,33 @@ head(output_eigen_url$beta_hat)
 range(output_eigen_url$beta_hat)
 length(output_eigen_url$beta_hat)
 
-#Microbenchmark.  Note: was 10.7 seconds before adding lazy recursion term, 13.5 seconds after adding.
+#Microbenchmark.  Note: was 10.7 seconds before adding lazy recursion term, 13.3 seconds after adding.
 microbenchmark(
 	sparse_sgd_logit(Xt_URL,Y_URL,m_URL,step=1,beta0=rep(0,ncol(Xt_URL)),lambda=0,npass=1),
 	times=1,
 	unit='s'
 )
 
+###################################
+###  Test/train prediction:     ###
+###################################
+
 #------------------------------------------------------------------
-#Test/train prediction:
+#Set up training and test data.
+
+#Split URL data set into 75% train, 25% test.
+train_samps = sample(ncol(Xt_URL)*.75,replace=F)
+
+Xt_URL_tr = Xt_URL[,train_samps]
+Xt_URL_te = Xt_URL[,-train_samps]
+
+Y_URL_tr = Y_URL[train_samps]
+Y_URL_te = Y_URL[-train_samps]
+
+m_URL_tr = m_URL[train_samps]
+m_URL_te = m_URL[-train_samps]
+
+X_URL_te = t(Xt_URL_te)	#Need un-transposed test X for multiplying by beta when predicting.
 
 #Build model on the training data set.  Try lambda=.1
 url_tr <- sparse_sgd_logit(Xt_URL_tr,Y_URL_tr,m_URL_tr,step=1,beta0=rep(0,nrow(Xt_URL)),lambda=.1,npass=1)
@@ -113,3 +114,25 @@ length(url_tr$beta_hat)
 #Predicted y values for test set.
 XB = X_URL_te %*% url_tr$beta_hat
 pred_probs = exp(XB) / (1 + exp(XB))
+yhat = ifelse(pred_probs>.5,1,0)
+
+#Calculate classification error rate.  (If prob > .5, yhat=1, else yhat=0.)
+table(yhat==Y_URL_te)/length(Y_URL_te)
+
+#Sample Results from one of my runs:
+#> table(yhat==Y_URL_te)/length(Y_URL_te)
+#
+#     FALSE       TRUE 
+#     0.05525405 0.94474595
+
+#Plot log-likelihood function for the training data.
+plot(1:length(url_tr$loglik),url_tr$loglik,type='l',col='blue',
+	main='Running Avg Neg Loglhood for Training URL Model',
+	xlab='Iteration',ylab='RA Neg Loglhood')
+	
+#Save plot:
+jpeg(file='/Users/jennstarling/UTAustin/2016_Fall_SDS 385_Big_Data/Exercise 04 LaTeX Files/URL_RAlogl_test.jpg')	
+ plot(1:length(url_tr$loglik),url_tr$loglik,type='l',col='blue',
+	main='Running Avg Neg Loglhood for Training URL Model',
+	xlab='Iteration',ylab='RA Neg Loglhood')
+dev.off()
