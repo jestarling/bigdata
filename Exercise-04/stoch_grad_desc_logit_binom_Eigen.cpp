@@ -156,24 +156,26 @@ List sparse_sgd_logit(MapMatd X, VectorXd Y, VectorXd m, double step,
 				//"Penalty-only" updates refers to the gradient not being updated except
 				//for adding the 2*lambda*beta penalty term.
 				
+				//Cap maximum number of recursive updates at 5, for numeric stability.
+				//This works bc updates go to zero fairly quickly when lambda<1.
 				skip = iter - last_updated(j);	//Number of iters since last update. (Skip=1 means updated last iter.)
-				if (skip > 5){  skip = 5;}			//Cap maximum number of recursive updates at 10.
+				if (skip > 5){  skip = 5;}		
 				last_updated(j) = iter;			//Update the last_updated flag for all j's active in this iter.
 				
-				gam = step*adj_grad(j);
-				
 				//Calculate accum penalty.  Based on recursion defined in my notes.
-				accum_l2_penalty = beta_hat(j) * ( (1 - pow(1-lambda*gam,skip)) / (1 - lambda*gam) );
+				//NOTE: This is the gradient for minimizing the neg log-lhood.  
+				//See final note in recursion doc.
+				gam = step*adj_grad(j);
+				accum_l2_penalty = beta_hat(j) * ( (1 - pow(1+lambda*gam,skip)) / (1-lambda*gam) );
 				
 				//Add accum l2 penalty to beta_hat_j before doing current iteration update.
-				beta_hat(j) += accum_l2_penalty; 
+				beta_hat(j) -= accum_l2_penalty; 
 			
-				
 				//--------------------------------
 				//STEP 2: Continue with updates for jth row in ith col.
 				
 				//Calculate l2 norm penalty.
-				double l2penalty = 2*skip*lambda*beta_hat(j);
+				double l2penalty = 2*lambda*beta_hat(j);
 				
 				//Update the jth gradient term.  Note: it.value() looks up Xji for nonzero entries.
 				grad_j = (mi*wi-Yi) * it.value() + l2penalty;  
@@ -193,22 +195,22 @@ List sparse_sgd_logit(MapMatd X, VectorXd Y, VectorXd m, double step,
 	} //End Loop 1: Loop over entire data set npass times.
 	
 	//-----------------------------------
-	//Done looping, but now must make a final update for applying the penalty for
-	//predictors not updated recently (in last few iterations).
-	//Loop 4: Loop over predictors to 
+	//Loop 4: Loop over predictors to catch any last accumulated penalty updates
+	//for predictors not updated in last iteration.
 	for (int j=0; j<p; ++j){
+		//Using (iter-1) since last_updated indexes from 0, and n is based on counting rows from 1.
 		skip = (iter-1) - last_updated(j); 
-			//Using (iter-1) since last_updated indexes from 0, and n is based on counting rows from 1.
-		if (skip > 5){  skip = 5;}			//Cap maximum number of recursive updates at 10.
+		
+		//Cap maximum number of recursive updates at 5, for numeric stability.
+		//This works bc updates go to zero fairly quickly when lambda<1.	
+		if (skip > 5){  skip = 5;}			
 		
 		//Calculate accum penalty.
-		gam = step*adj_grad(j);
-		//gam = step*adj_grad_j;	
-		accum_l2_penalty = beta_hat(j) * ( (1 - pow(1-lambda*gam,skip)) / (1 - lambda*gam) );
+		gam = step*adj_grad(j);	
+		accum_l2_penalty = beta_hat(j) * ( (1 - pow(1+lambda*gam,skip)) / (1-lambda*gam) );
 		
 		//Update beta_j's to add accum penalty.
-		beta_hat(j) += accum_l2_penalty; 
-
+		beta_hat(j) -= accum_l2_penalty; 
 	}	
 	
 	//-----------------------------------
