@@ -36,28 +36,20 @@ fx <- function(X,y,lambda,beta){
 
 #----------------------------------------------
 #Proximal L1 Operator function: (soft thresholding operator)
-#Inputs:
-#	x = vector of values.
-#	lambda = the scaling factor of the l1 norm.
-#	t = the step size.
+prox_l1 <- function(x, lambda){
 
-#Output:
-#	Value of the soft-thresholding proximal operator.
-prox_l1 <- function(x,gamma,tau=1) {
-	
-	thresh <- gamma*tau
-	prox = rep(0,length(x))
-	
-	idx.1 = which(x < -thresh)
-	idx.2 = which(x > thresh)
-	idx.3 = which(abs(x) <= thresh)
-	
-	if (length(idx.1) > 0) prox[idx.1] = x[idx.1] + thresh
-	if (length(idx.2) > 0) prox[idx.2] = x[idx.2] - thresh
-	if (length(idx.3) > 0) prox[idx.3] = 0
-
-    return(prox)
+  # Computes the soft thresholding estimator
+  # ----------------------------------------
+  # Args: 
+  #   - x: vector of the observations
+  #   - lambda: penalization parameter (threshold)
+  # Returns: 
+  #   - theta: the soft thresholding estimator
+  # ------------------------------------------
+  theta <- sign(x) * pmax(rep(0, length(x)), abs(x) - lambda)
+  return (theta)
 }
+
 
 #----------------------------------------------
 #ADMM for Lasso:

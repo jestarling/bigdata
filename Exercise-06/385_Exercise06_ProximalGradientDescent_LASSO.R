@@ -32,33 +32,19 @@ fx <- function(X,y,lambda,beta){
 	return(as.numeric(obj))
 }
 
-#Test:
-fx(X,y,lam,beta_glmnet)
 
-#----------------------------------------------
-#Proximal L1 Operator function: (soft thresholding operator)
-#Inputs:
-#	x = vector of values.
-#	lambda = the scaling factor of the l1 norm.
-#	t = the step size.
+prox_l1 <- function(x, lambda){
 
-#Output:
-#	Value of the soft-thresholding proximal operator.
-
-prox_l1 <- function(x,gamma,tau=1) {
-	
-	thresh <- gamma*tau
-	prox = rep(0,length(x))
-	
-	idx.1 = which(x < -thresh)
-	idx.2 = which(x > thresh)
-	idx.3 = which(abs(x) <= thresh)
-	
-	if (length(idx.1) > 0) prox[idx.1] = x[idx.1] + thresh
-	if (length(idx.2) > 0) prox[idx.2] = x[idx.2] - thresh
-	if (length(idx.3) > 0) prox[idx.3] = 0
-
-    return(prox)
+  # Computes the soft thresholding estimator
+  # ----------------------------------------
+  # Args: 
+  #   - x: vector of the observations
+  #   - lambda: penalization parameter (threshold)
+  # Returns: 
+  #   - theta: the soft thresholding estimator
+  # ------------------------------------------
+  theta <- sign(x) * pmax(rep(0, length(x)), abs(x) - lambda)
+  return (theta)
 }
 
 #----------------------------------------------
@@ -107,7 +93,7 @@ proxGD <- function(X,Y,gamma=.01,maxiter=50,tol=1E-10,lambda=.1){
 		z = betas[i-1,] - gamma*grad[i-1,]
 		
 		#STEP 2: Proximal step.
-		betas[i,] = prox_l1(z,gamma,tau=lambda)
+		betas[i,] = prox_l1(z,gamma*lambda)
 		
 		#Update objective function.
 		obj[i] = fx(X,y,lambda=lambda,beta=betas[i,])
@@ -153,11 +139,8 @@ accelProxGD <- function(X,Y,gamma=.01,maxiter=50,tol=1E-10,lambda=.1){
 	grad[1,] =  gradient(X,y,betas[1,])
 	
 	#4. Initialize vectors to hold Nesterov update values.
-	z = matrix(0,nrow=maxiter,ncol=ncol(X)) 
+	z = matrix(0,nrow=maxiter,ncol=ncol(X)) #Use initial z value of zero.
 	s = rep(0,maxiter)	
-	
-	#Set up first z value.  (Used a regular gradient calculation for beta0.)
-	#z[1,] = betas[1,] - gamma * grad[1,]
 	
 	#Set up scalar s terms.  Ok before main loop, as do not depend on other terms' updates.
 	for (j in 2:maxiter){
@@ -176,10 +159,11 @@ accelProxGD <- function(X,Y,gamma=.01,maxiter=50,tol=1E-10,lambda=.1){
 		u = z[i-1,] - gamma * grad[i-1,]
 		
 		#STEP 2: Proximal step; update betas.
-		betas[i,] = prox_l1(u,gamma,tau=lambda)
+		betas[i,] = prox_l1(u,gamma*lambda)
+		#betas[i,] = prox_l1(u,gamma,tau=lambda)
 		
 		#STEP 3: Nesterov step; update Nesterov momentum z.
-		z[i,] = betas[i-1,] + ((s[i-1]-1)/s[i]) * (betas[i-1,] - betas[i,])
+		z[i,] = betas[i,] + ((s[i-1]-1)/s[i]) * (betas[i,] - betas[i-1,])
 		
 		#Update objective function.
 		obj[i] = fx(X,y,lambda=lambda,beta=betas[i,])
