@@ -27,11 +27,8 @@ y = scale(y)
 #Output:
 #	Value of the LASSO objective function at specified inputs.
 fx <- function(X,y,lambda,beta){
-	#f = (1/nrow(X)) * (t(y - X %*% beta) %*% (y - X %*% beta))
-	f = (1/2) * (t(y - X %*% beta) %*% (y - X %*% beta))
-	g = lambda * sum(abs(beta))
-	obj = (f+g)
-	return(as.numeric(obj))
+	obj = (1/2) * sum((y - X %*% beta) ^ 2) + lambda * sum(abs(beta))	
+	return(obj)
 }
 
 #----------------------------------------------
@@ -50,60 +47,86 @@ prox_l1 <- function(x, lambda){
   return (theta)
 }
 
-
 #----------------------------------------------
 #ADMM for Lasso:
 #Inputs:
-#	X = design matrix
-#	y = response vector
+#	X = design matrix (A)
+#	y = response vector (b)
 #	rho = step size
 #	maxiter = maximum iterations
-#	tol = tolerance for convergence
+#	eps_abs = primal tolerance for convergence (epsilon_abs)
+#	eps_rel = dual tolerance for convergence (epsilon_rel)
 #	lambda = l1 norm penalty constant.
 #Output:
-#	List including estimated beta values and objective function.
-admmLasso = function(X,Y,rho=.01,lambda=.1,maxiter=1000,tol=1E-10){
+#	List including estimated beta (x) values and objective function.
+#Note: In optimization notation, A=X, b=Y, x=beta (minimizing x).
+
+admmLasso = function(X,Y,rho=1,lambda=.1,maxiter=1000,e_abs=1E-3,e_rel=1E-6){
+		
+	#Define dimensions n and p.
+	n = nrow(X)
+	p = ncol(X)
+	
+	#Rescale lambda to match glmnet results.
+	lambda = lambda * n
+	
+	#Define function Euclidian (l2) norm of a vector.
+	l2norm <- function(x) sqrt(sum(x^2))
 	
 	i=0					#Initialize iterator.
 	converged <- 0		#Indicator for whether convergence met.
 	
-	#1. Initialize matrix to hold beta vector for each iteration.
-	betas <- matrix(0,nrow=maxiter,ncol=ncol(X)) 
-
-	
-	#2. Initialize values for objective function.
+	#Initialize data structures.
+	betas <- matrix(0,nrow=maxiter,ncol=p) 	#holds beta vector for each iteration.
 	obj <- rep(0,maxiter) 	#Initialize vector to hold loglikelihood fctn.
-	obj[1] <- fx(X,y,lambda,betas[1,])
+	z = matrix(0,nrow=maxiter,ncol=p)	#Initialize z vector to all zeros.
 	
-	#3. Cache matrix inverse, since using fixed step size for each iter.
-	inv_cache = solve(t(X) %*% X + rho*diag(1,ncol(betas)))
+	#Initialize values.
+	obj[1] <- fx(X,y,lambda,betas[1,])	#Initialize objective.
+	betas[1,] <- rep(0,p)	#Initialize beta vector to 0 to start.
+	u = rep(0,p)	#Initialize the lagrangian to all zeros.
 	
-	#4. Initialize values.
-	betas[1,] <- rep(0,ncol(X))	#Initialize beta vector to 0 to start.
-	u = rep(0,ncol(betas))	#Initialize the lagrangian to all zeros.
-	z = rep(0,ncol(betas))	#Initialize z vector to all zeros.
+	#Pre-cache matrix inverse and Xty, since using fixed step size for each iter.
+	Xty = crossprod(X,y)
+	inv = solve(crossprod(X) + diag(rep(rho,p)))
+	
+	#Initialize residual vectors.
+	s = 0	#dual residual
+	r = 0	#primal residual
 
-	#4. ADMM looping.
+	#ADMM looping.
 	for (i in 2:maxiter){
 		
 		#Update betas.
-		betas[i,] = inv_cache %*% (t(X) %*% y + rho * (z-u) )
+		betas[i,] = inv %*% (Xty + rho * (z[i,]-u) )
 		
 		#Update z.
-		z = prox_l1(betas[i,] + u,lambda/rho)
+		z[i,] = prox_l1(betas[i,] + u,lambda/rho)
 		
 		#Update u (lagrangian).
-		u = u + betas[i,] - z
+		u = u + betas[i,] - z[i,]
 		
 		#Update objective function.
 		obj[i] = fx(X,y,lambda=lambda,beta=betas[i,])
-
-		#Convergence check.
-		#Check if convergence met: If yes, exit loop.
-		if (abs(obj[i]-obj[i-1])/abs(obj[i-1]+1E-3) < tol ){
-			converged=1;
-			break;
+		
+		#--------------------------
+		#Convergence check:
+		
+		#Calculate residuals for iteration i.
+		r = betas[i,] - z[i,]
+		s = -rho * (z[i,] - z[i-1,])
+		
+		r.norm = l2norm(r)
+		s.norm = l2norm(s)
+		
+		e.primal = sqrt(p)*e_abs + e_rel * max(l2norm(betas[i,]), l2norm(z[i,])) 
+		e.dual =  sqrt(p)*e_abs + e_rel * l2norm(u)
+		
+		if (r.norm <= e.primal && s.norm <= e.dual){
+			converged=1
+			break
 		}
+		#--------------------------
 	}
 	
 	#Return function values.
@@ -112,20 +135,20 @@ admmLasso = function(X,Y,rho=.01,lambda=.1,maxiter=1000,tol=1E-10){
 #----------------------------------------------
 
 #Run admm for lasso.
-output <- admmLasso(X,y,rho=.01,lambda=.01,maxiter=1000,tol=1E-14)
+output <- admmLasso(X,y,rho=5,lambda=.01,maxiter=1000,e_abs=1E-6,e_rel=1E-2)
 
 #Iterations to convergence:
 print(output$iter)
 print(output$converged)
 
 #Plot objective function.
-jpeg(file='/Users/jennstarling/UTAustin/2016_Fall_SDS 385_Big_Data/Exercise 07 LaTeX Files/admm_objective.jpg')
+#jpeg(file='/Users/jennstarling/UTAustin/2016_Fall_SDS 385_Big_Data/Exercise 07 LaTeX Files/admm_objective.jpg')
 plot(1:output$iter,output$obj[1:output$iter],type='l',col='blue',log='xy',
 	main='Lasso Objective Function',xlab='iter',ylab='objective')
-dev.off()
+#dev.off()
 
 #Compare results to glmnet:
-myLasso <- glmnet(X,y,family='gaussian',alpha=1,lambda=.01)	#Fit lasso glmnet model.
+myLasso <- glmnet(X,y,family='gaussian',alpha=1,lambda=.01,intercept=F,standardize=F)	#Fit lasso glmnet model.
 beta_glmnet <- myLasso$beta									#Save glmnet betas.
 cbind(glmnet=beta_glmnet,admm=round(output$beta_hat,8))		#Output comparison
 
